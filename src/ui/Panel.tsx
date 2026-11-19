@@ -20,12 +20,13 @@ export function Panel({ game, statuses, onClose }: Props) {
         {game.name}
       </h2>
       {game.tagline && <p className="tagline">{game.tagline}</p>}
+      {game.playUrl && (
+        <a className="play-btn sketch-btn" href={game.playUrl} target="_blank" rel="noreferrer">
+          ▶ {game.kind === 'game' ? '進入遊戲' : '開啟網頁'}
+          <span className="play-url">{game.playUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+        </a>
+      )}
       <p className="links">
-        {game.playUrl && (
-          <a href={game.playUrl} target="_blank" rel="noreferrer">
-            ▶ 開啟
-          </a>
-        )}
         {game.repo && (
           <a href={`https://github.com/${game.repo}`} target="_blank" rel="noreferrer">
             ⌥ {game.repo}
@@ -49,7 +50,7 @@ export function Panel({ game, statuses, onClose }: Props) {
                 <div className="svc-head">
                   <strong>{SERVICE_LABELS[k]}</strong>
                   <span className="lvl">
-                    {STATUS_LABELS[st.level]}
+                    {st.paused ? '已暫停' : STATUS_LABELS[st.level]}
                     {st.source === 'ping' && ' · ping'}
                   </span>
                 </div>

@@ -60,23 +60,50 @@ function unknown(needs: string[], why: string): ServiceStatus {
 }
 
 // ---------------------------------------------------------------- Supabase
+/** Supabase management API statuses that mean the project is paused or gone. */
+const SUPABASE_PAUSED = /INACTIVE|PAUSED|PAUSING|REMOVED|GOING_DOWN/;
+const SUPABASE_BROKEN = /RESTORE_FAILED|INIT_FAILED|UPGRADE_FAILED|PAUSE_FAILED/;
+
 async function checkSupabase(ctx: Ctx, cfg: NonNullable<Game['services']['supabase']>): Promise<ServiceStatus> {
+  const tokenEnv = cfg.tokenEnv ?? 'SUPABASE_ACCESS_TOKEN';
+  if (!cfg.projectRef) {
+    return unknown(
+      ['supabase.projectRef in games.ts', tokenEnv],
+      `Project ref not set${cfg.name ? ` for "${cfg.name}"` : ''}.`,
+    );
+  }
   const link = `https://supabase.com/dashboard/project/${cfg.projectRef}`;
-  const token = ctx.env.SUPABASE_ACCESS_TOKEN;
+  const token = ctx.env[tokenEnv];
   if (!token) {
-    // Without a token we can still see whether the API host answers.
-    const p = await ping(ctx, `https://${cfg.projectRef}.supabase.co/auth/v1/health`, ['SUPABASE_ACCESS_TOKEN']);
-    return { ...p, link };
+    // Without a token we can still see whether the API host answers. A paused project answers 540.
+    const url = `https://${cfg.projectRef}.supabase.co/auth/v1/health`;
+    try {
+      const res = await request(ctx, url);
+      if (res.status === 540)
+        return { level: 'down', detail: 'Project is paused (HTTP 540).', paused: true, source: 'ping', needs: [tokenEnv], link };
+    } catch {
+      // handled by ping below
+    }
+    return { ...(await ping(ctx, url, [tokenEnv])), link };
   }
   try {
     const res = await request(ctx, `https://api.supabase.com/v1/projects/${cfg.projectRef}`, {
       authorization: `Bearer ${token}`,
     });
+    if (res.status === 401 || res.status === 403 || res.status === 404)
+      return {
+        level: 'unknown',
+        detail: `Token cannot see this project (HTTP ${res.status}). Is it in another Supabase account?`,
+        source: 'api',
+        needs: [tokenEnv],
+        link,
+      };
     if (!res.ok) return { level: 'down', detail: `Supabase API returned HTTP ${res.status}.`, source: 'api', link };
     const status = String((res.body as { status?: string })?.status ?? 'UNKNOWN');
     if (status === 'ACTIVE_HEALTHY') return { level: 'ok', detail: 'Project is active and healthy.', source: 'api', link };
-    if (/INACTIVE|PAUSED|REMOVED|RESTORE_FAILED|INIT_FAILED/.test(status))
-      return { level: 'down', detail: `Project status: ${status}.`, source: 'api', link };
+    if (SUPABASE_PAUSED.test(status))
+      return { level: 'down', detail: `Project is paused (${status}). Restore it in the Supabase dashboard.`, paused: true, source: 'api', link };
+    if (SUPABASE_BROKEN.test(status)) return { level: 'down', detail: `Project status: ${status}.`, source: 'api', link };
     return { level: 'warn', detail: `Project status: ${status}.`, source: 'api', link };
   } catch (err) {
     return { ...errorStatus(err), link };
@@ -114,19 +141,20 @@ async function checkResend(ctx: Ctx, cfg: NonNullable<Game['services']['resend']
 
 // ---------------------------------------------------------------- Render
 async function checkRender(ctx: Ctx, cfg: NonNullable<Game['services']['render']>): Promise<ServiceStatus> {
-  const key = ctx.env.RENDER_API_KEY;
+  const keyEnv = cfg.tokenEnv ?? 'RENDER_API_KEY';
+  const key = ctx.env[keyEnv];
   const link = cfg.serviceId ? `https://dashboard.render.com/web/${cfg.serviceId}` : 'https://dashboard.render.com';
   if (!key || !cfg.serviceId) {
-    const needs = [!key && 'RENDER_API_KEY', !cfg.serviceId && 'render.serviceId in games.ts'].filter(Boolean) as string[];
+    const needs = [!cfg.serviceId && 'render.serviceId in games.ts', !key && keyEnv].filter(Boolean) as string[];
     if (cfg.url) return { ...(await ping(ctx, cfg.url, needs)), link };
-    return { ...unknown(needs, 'No Render API key or service id.'), link };
+    return { ...unknown(needs, cfg.serviceId ? 'No Render API key set.' : 'Render service id not set.'), link };
   }
   try {
     const auth = { authorization: `Bearer ${key}`, accept: 'application/json' };
     const svc = await request(ctx, `https://api.render.com/v1/services/${cfg.serviceId}`, auth);
     if (!svc.ok) return { level: 'down', detail: `Render API returned HTTP ${svc.status}.`, source: 'api', link };
     if ((svc.body as { suspended?: string })?.suspended === 'suspended')
-      return { level: 'down', detail: 'Service is suspended.', source: 'api', link };
+      return { level: 'down', detail: 'Service is suspended (paused). Resume it in the Render dashboard.', paused: true, source: 'api', link };
     const deploys = await request(ctx, `https://api.render.com/v1/services/${cfg.serviceId}/deploys?limit=1`, auth);
     const list = (deploys.body as { deploy?: { status: string } }[]) ?? [];
     const st = Array.isArray(list) ? list[0]?.deploy?.status : undefined;
@@ -140,11 +168,12 @@ async function checkRender(ctx: Ctx, cfg: NonNullable<Game['services']['render']
 
 // ---------------------------------------------------------------- Vercel
 async function checkVercel(ctx: Ctx, cfg: NonNullable<Game['services']['vercel']>): Promise<ServiceStatus> {
-  const token = ctx.env.VERCEL_TOKEN;
+  const tokenEnv = cfg.tokenEnv ?? 'VERCEL_TOKEN';
+  const token = ctx.env[tokenEnv];
   const link = cfg.url;
   if (!token) {
-    if (cfg.url) return ping(ctx, cfg.url, ['VERCEL_TOKEN']);
-    return unknown(['VERCEL_TOKEN'], 'No Vercel token set.');
+    if (cfg.url) return ping(ctx, cfg.url, [tokenEnv]);
+    return unknown([tokenEnv], 'No Vercel token set.');
   }
   const team = ctx.env.VERCEL_TEAM_ID ? `&teamId=${encodeURIComponent(ctx.env.VERCEL_TEAM_ID)}` : '';
   const auth = { authorization: `Bearer ${token}` };
@@ -152,7 +181,9 @@ async function checkVercel(ctx: Ctx, cfg: NonNullable<Game['services']['vercel']
     const proj = await request(ctx, `https://api.vercel.com/v9/projects/${encodeURIComponent(cfg.project)}?${team.slice(1)}`, auth);
     if (proj.status === 404) return { level: 'down', detail: `Project "${cfg.project}" not found (check VERCEL_TEAM_ID).`, source: 'api', link };
     if (!proj.ok) return { level: 'down', detail: `Vercel API returned HTTP ${proj.status}.`, source: 'api', link };
-    const id = (proj.body as { id: string }).id;
+    const project = proj.body as { id: string; paused?: boolean; live?: boolean };
+    if (project.paused) return { level: 'down', detail: 'Project is paused on Vercel.', paused: true, source: 'api', link };
+    const id = project.id;
     const deps = await request(ctx, `https://api.vercel.com/v6/deployments?projectId=${id}&target=production&limit=1${team}`, auth);
     const d = (deps.body as { deployments?: { state?: string; readyState?: string; url?: string }[] })?.deployments?.[0];
     const state = d?.readyState ?? d?.state;

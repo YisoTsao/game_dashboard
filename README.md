@@ -35,7 +35,8 @@ API keys are only read by the Node script (locally from `.env`, in CI from GitHu
 |---|---|
 | 正常 ok | The API says it is healthy, or the site answers (marked "ping" when only pinged) |
 | 注意 warn | Building, pending, cancelled, or an unexpected state |
-| 異常 down | Failed deploy, paused/suspended project, failed run, site not answering |
+| 異常 down | Failed deploy, failed run, site not answering |
+| 已暫停 paused | Shown as down with a "已暫停" label: Supabase project paused, Render service suspended, Vercel project paused |
 | 未知 unknown | No credential to check it. The panel names the env var that would enable it |
 | 未使用 unused | The game does not use this service |
 
@@ -43,7 +44,7 @@ API keys are only read by the Node script (locally from `.env`, in CI from GitHu
 
 | Service | Env var | What is checked | Without the key |
 |---|---|---|---|
-| Supabase | `SUPABASE_ACCESS_TOKEN` | Management API project status (`ACTIVE_HEALTHY`, paused, …) | Pings `https://<ref>.supabase.co` |
+| Supabase | `SUPABASE_ACCESS_TOKEN` (one per account; set `tokenEnv` in games.ts for a second account) | Management API project status (`ACTIVE_HEALTHY`, `INACTIVE` = paused, …) | Pings `https://<ref>.supabase.co` (HTTP 540 = paused) |
 | Resend | `RESEND_API_KEY` (full access) | Domain verification status | unknown |
 | Render | `RENDER_API_KEY` + `serviceId` | Suspended flag and latest deploy | Pings `url` if set, else unknown |
 | Vercel | `VERCEL_TOKEN` (+ `VERCEL_TEAM_ID`) | Latest production deployment state | Pings `url` if set |
