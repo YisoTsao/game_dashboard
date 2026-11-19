@@ -1,0 +1,159 @@
+/* Crayon Toybox style. Tokens mirror src/theme.ts; see docs/STYLE_GUIDE.md. */
+:root {
+  --ink: #2b2118;
+  --paper: #fff6e5;
+  --paper-2: #fbeccf;
+  --sky: #bfe3f2;
+  --ok: #5dbb63;
+  --warn: #f5b841;
+  --down: #e5534b;
+  --unknown: #9aa5b1;
+  --unused: #e8e1d3;
+  --font-hand: 'Gaegu', 'Zen Maru Gothic', system-ui, sans-serif;
+  --font-body: 'Zen Maru Gothic', 'Gaegu', system-ui, sans-serif;
+  /* Uneven corners make boxes look drawn by hand. */
+  --wobble: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  --wobble-2: 15px 225px 15px 255px / 255px 15px 225px 15px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: linear-gradient(var(--sky), var(--paper) 70%);
+  overflow: hidden;
+}
+
+.app { position: relative; height: 100%; }
+.stage { position: absolute; inset: 0; }
+
+/* Paper grain over everything, very faint. */
+.app::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(43, 33, 24, 0.06) 1px, transparent 1px);
+  background-size: 5px 5px;
+  mix-blend-mode: multiply;
+}
+
+.sketch {
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: var(--wobble);
+  box-shadow: 4px 5px 0 var(--ink);
+}
+
+.sketch-btn {
+  font: 700 1.05rem var(--font-hand);
+  color: var(--ink);
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  border-radius: var(--wobble-2);
+  box-shadow: 2px 3px 0 var(--ink);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.sketch-btn:hover { transform: translate(-1px, -1px) rotate(-1deg); box-shadow: 3px 4px 0 var(--ink); }
+.sketch-btn:active { transform: translate(2px, 3px); box-shadow: 0 0 0 var(--ink); }
+.sketch-btn:focus-visible { outline: 3px dashed var(--ink); outline-offset: 3px; }
+
+.chip {
+  display: inline-grid; place-items: center;
+  width: 1.4em; height: 1.4em; flex: none;
+  border: 2px solid var(--ink); border-radius: 50% 45% 50% 40%;
+  font: 700 0.85em var(--font-hand); color: var(--ink);
+}
+
+/* ---- top bar ---- */
+.topbar {
+  position: absolute; top: 16px; left: 16px; right: 16px;
+  display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap;
+  pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
+.title { padding: 8px 18px 6px; transform: rotate(-1.2deg); }
+.title h1 { margin: 0; font: 700 2rem/1 var(--font-hand); letter-spacing: 1px; }
+.title .sub { font: 1.05rem var(--font-hand); opacity: 0.75; }
+.summary { display: flex; align-items: center; gap: 12px; padding: 8px 12px; font: 700 1.3rem var(--font-hand); transform: rotate(0.8deg); }
+.sum-item { display: inline-flex; align-items: center; gap: 4px; }
+
+.checked {
+  position: absolute; top: 96px; left: 20px; margin: 0;
+  font: 1rem var(--font-hand); opacity: 0.8;
+}
+.checked.warn { opacity: 1; padding: 6px 12px; background: #fff3c4; }
+code { font-family: ui-monospace, monospace; font-size: 0.85em; background: var(--paper-2); padding: 1px 5px; border-radius: 4px; }
+
+/* ---- island labels (drei Html) ---- */
+.island-label {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font: 700 1.25rem var(--font-hand);
+  background: var(--paper); border: 2.5px solid var(--ink); border-radius: var(--wobble);
+  box-shadow: 2px 3px 0 var(--ink); padding: 2px 10px; cursor: pointer; user-select: none;
+}
+.island-label.is-selected { background: #fff0a8; }
+.island-label .dot { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; border: 2px solid var(--ink); border-radius: 50%; font-size: 0.8em; }
+.unconfirmed {
+  display: inline-grid; place-items: center; width: 1.1em; height: 1.1em;
+  background: #fff; border: 2px dashed var(--ink); border-radius: 50%; font-size: 0.75em;
+}
+
+/* ---- bottom strip ---- */
+.game-strip {
+  position: absolute; left: 16px; right: 16px; bottom: 44px;
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+.game-chip { display: inline-flex; align-items: center; gap: 6px; }
+.game-chip.is-on { background: #fff0a8; }
+.legend {
+  position: absolute; left: 0; right: 0; bottom: 12px;
+  display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+  font: 1rem var(--font-hand);
+}
+.legend i { display: inline-block; width: 12px; height: 12px; margin-right: 4px; border: 2px solid var(--ink); border-radius: 50%; vertical-align: -1px; }
+
+/* ---- side panel ---- */
+.panel {
+  position: absolute; top: 90px; right: 16px; width: min(380px, calc(100% - 32px));
+  max-height: calc(100% - 200px); overflow: auto;
+  padding: 16px 18px 12px; transform: rotate(0.5deg);
+  animation: pop 0.25s cubic-bezier(.3,1.6,.6,1);
+}
+@keyframes pop { from { transform: scale(0.85) rotate(-3deg); opacity: 0; } }
+.panel h2 { display: flex; align-items: center; gap: 8px; margin: 0 32px 2px 0; font: 700 1.9rem/1.1 var(--font-hand); }
+.swatch { width: 18px; height: 18px; border: 2.5px solid var(--ink); border-radius: 40% 50% 45% 55%; }
+.panel .close { position: absolute; top: 10px; right: 12px; padding: 0 8px; }
+.tagline { margin: 0 0 6px; font: 1.1rem var(--font-hand); opacity: 0.8; }
+.links { display: flex; gap: 12px; flex-wrap: wrap; margin: 4px 0 8px; font-size: 0.9rem; }
+.links a, .svc-link { color: var(--ink); text-decoration: underline wavy 1.5px; text-underline-offset: 3px; }
+.note { margin: 6px 0; padding: 6px 10px; background: #fff3c4; border: 2px dashed var(--ink); border-radius: var(--wobble-2); font-size: 0.85rem; }
+
+.services { list-style: none; padding: 0; margin: 8px 0 0; }
+.svc { display: flex; gap: 10px; padding: 9px 2px; border-top: 2px dashed rgba(43, 33, 24, 0.25); }
+.svc .chip { margin-top: 2px; font-size: 1rem; }
+.svc-body { flex: 1; min-width: 0; font-size: 0.88rem; }
+.svc-head { display: flex; justify-content: space-between; gap: 8px; }
+.svc-head strong { font: 700 1.15rem var(--font-hand); }
+.svc-head .lvl { font: 700 1rem var(--font-hand); opacity: 0.75; }
+.svc.lvl-unused { opacity: 0.55; }
+.detail { margin-top: 2px; }
+.needs { margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.svc-link { display: inline-block; margin-top: 3px; font-size: 0.82rem; }
+
+@media (max-width: 640px) {
+  .title h1 { font-size: 1.5rem; }
+  .summary { font-size: 1.05rem; gap: 8px; }
+  .checked { top: auto; bottom: 120px; }
+  .panel { top: auto; bottom: 0; right: 0; left: 0; width: 100%; max-height: 60%; transform: none; border-radius: 22px 22px 0 0; }
+  .game-strip { bottom: 40px; }
+}
+
+/* HTML overlays sit above the drei <Html> labels (which use z-index 0–10). */
+.topbar, .game-strip, .legend, .checked { z-index: 40; }
+.panel { z-index: 50; }
+@media (max-width: 640px) {
+  .game-strip { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding: 4px 4px 8px; left: 0; right: 0; }
+  .game-chip { flex: none; }
+}
