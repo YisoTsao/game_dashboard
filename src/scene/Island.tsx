@@ -84,6 +84,18 @@ export function Island({ game, statuses, position, index, selected, onSelect, la
           </span>
           {game.name}
           {!game.confirmed && <span className="unconfirmed" title="Service mapping not confirmed yet">?</span>}
+          {game.playUrl && (
+            <a
+              className="label-play"
+              href={game.playUrl}
+              target="_blank"
+              rel="noreferrer"
+              title={game.kind === 'game' ? '進入遊戲' : '開啟網頁'}
+              onClick={(e) => e.stopPropagation()}
+            >
+              ▶
+            </a>
+          )}
         </div>
       </Html>
     </group>

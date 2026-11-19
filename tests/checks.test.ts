@@ -70,7 +70,7 @@ describe('checkGame', () => {
       env,
       fetch: fakeFetch({ 'https://api.render.com/v1/services/srv-1': [200, { suspended: 'suspended' }] }),
     });
-    expect(down.render.level).toBe('down');
+    expect(down.render).toMatchObject({ level: 'down', paused: true });
     const ok = await checkGame(game, {
       env,
       fetch: fakeFetch({
@@ -122,5 +122,44 @@ describe('checkGame', () => {
       }),
     });
     expect(r.githubPages).toMatchObject({ level: 'ok', source: 'ping' });
+  });
+
+  it('Supabase: paused project is down and flagged paused', async () => {
+    const game = { ...base, services: { supabase: { projectRef: 'abc' } } };
+    const r = await checkGame(game, {
+      env: { SUPABASE_ACCESS_TOKEN: 't' },
+      fetch: fakeFetch({ 'https://api.supabase.com/v1/projects/abc': [200, { status: 'INACTIVE' }] }),
+    });
+    expect(r.supabase).toMatchObject({ level: 'down', paused: true });
+  });
+
+  it('Supabase: per-project tokenEnv picks the other account token', async () => {
+    const game = { ...base, services: { supabase: { projectRef: 'abc', tokenEnv: 'SUPABASE_ACCESS_TOKEN_CALO' } } };
+    const f = fakeFetch({ 'https://api.supabase.com/v1/projects/abc': [200, { status: 'ACTIVE_HEALTHY' }] });
+    const r = await checkGame(game, { env: { SUPABASE_ACCESS_TOKEN: 'main', SUPABASE_ACCESS_TOKEN_CALO: 'calo' }, fetch: f });
+    expect(r.supabase.level).toBe('ok');
+    expect(f.calls[0].auth).toBe('Bearer calo');
+  });
+
+  it('Supabase: missing project ref is unknown and says what to fill in', async () => {
+    const game = { ...base, services: { supabase: { name: 'Calo circle' } } };
+    const r = await checkGame(game, { env: {}, fetch: fakeFetch({}) });
+    expect(r.supabase.level).toBe('unknown');
+    expect(r.supabase.needs).toContain('supabase.projectRef in games.ts');
+  });
+
+  it('Supabase: paused project answers 540 on ping', async () => {
+    const game = { ...base, services: { supabase: { projectRef: 'abc' } } };
+    const r = await checkGame(game, { env: {}, fetch: fakeFetch({ 'https://abc.supabase.co/': [540, 'paused'] }) });
+    expect(r.supabase).toMatchObject({ level: 'down', paused: true, source: 'ping' });
+  });
+
+  it('Vercel: paused project is down and flagged paused', async () => {
+    const game = { ...base, services: { vercel: { project: 'p' } } };
+    const r = await checkGame(game, {
+      env: { VERCEL_TOKEN: 't' },
+      fetch: fakeFetch({ 'https://api.vercel.com/v9/projects/p': [200, { id: 'prj_1', paused: true }] }),
+    });
+    expect(r.vercel).toMatchObject({ level: 'down', paused: true });
   });
 });

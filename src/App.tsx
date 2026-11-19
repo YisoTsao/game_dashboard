@@ -59,16 +59,29 @@ export default function App() {
         {GAMES.map((g) => {
           const lv = report ? worstLevel(SERVICE_KEYS.map((k) => report.games[g.id]?.[k]?.level ?? 'unknown')) : 'unknown';
           return (
-            <button
-              key={g.id}
-              className={`game-chip sketch-btn ${selectedId === g.id ? 'is-on' : ''}`}
-              onClick={() => setSelectedId(selectedId === g.id ? null : g.id)}
-            >
-              <span className="chip" style={{ background: STATUS_COLORS[lv] }}>
-                {STATUS_EMOJI[lv]}
-              </span>
-              {g.name}
-            </button>
+            <span key={g.id} className="game-chip-wrap">
+              <button
+                className={`game-chip sketch-btn ${selectedId === g.id ? 'is-on' : ''}`}
+                onClick={() => setSelectedId(selectedId === g.id ? null : g.id)}
+              >
+                <span className="chip" style={{ background: STATUS_COLORS[lv] }}>
+                  {STATUS_EMOJI[lv]}
+                </span>
+                {g.name}
+              </button>
+              {g.playUrl && (
+                <a
+                  className="chip-play sketch-btn"
+                  href={g.playUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`${g.kind === 'game' ? '進入遊戲' : '開啟網頁'}：${g.name}`}
+                  title={g.kind === 'game' ? '進入遊戲' : '開啟網頁'}
+                >
+                  ▶
+                </a>
+              )}
+            </span>
           );
         })}
       </nav>

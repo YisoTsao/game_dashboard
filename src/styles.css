@@ -157,3 +157,19 @@ code { font-family: ui-monospace, monospace; font-size: 0.85em; background: var(
   .game-strip { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding: 4px 4px 8px; left: 0; right: 0; }
   .game-chip { flex: none; }
 }
+
+/* ---- enter links ---- */
+.play-btn {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin: 8px 0 6px; padding: 8px 14px;
+  background: var(--ok); text-decoration: none; font-size: 1.35rem;
+}
+.play-url { font: 0.8rem var(--font-body); opacity: 0.8; overflow-wrap: anywhere; }
+.game-chip-wrap { display: inline-flex; gap: 4px; align-items: stretch; flex: none; }
+.chip-play { display: inline-grid; place-items: center; padding: 0 9px; background: var(--ok); text-decoration: none; }
+.label-play {
+  display: inline-grid; place-items: center; width: 1.3em; height: 1.3em; margin-left: 2px;
+  background: var(--ok); color: var(--ink); text-decoration: none; font-size: 0.75em;
+  border: 2px solid var(--ink); border-radius: 50% 45% 50% 40%;
+}
+.label-play:hover { transform: scale(1.15); }
