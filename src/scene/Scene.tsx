@@ -49,6 +49,7 @@ export function Scene({ games, report, selectedId, onSelect, labelRoot }: Props)
           game={g}
           index={i}
           statuses={report?.games[g.id]}
+          report={report}
           position={positions[i]}
           selected={selectedId === g.id}
           onSelect={() => onSelect(g.id)}

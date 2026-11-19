@@ -31,7 +31,7 @@ async function request(ctx: Ctx, url: string, headers: Record<string, string> = 
     } catch {
       body = text;
     }
-    return { status: res.status, ok: res.ok, body };
+    return { status: res.status, ok: res.ok, body, text, headers: res.headers };
   } finally {
     clearTimeout(timer);
   }
@@ -43,9 +43,23 @@ function errorStatus(err: unknown): ServiceStatus {
 }
 
 /** Ping a public URL. Used when no API key is set. */
+/** Recognise the "this project is paused / suspended" pages that hosts serve instead of the site. */
+export function detectPausedPage(res: { status: number; text: string; headers: Headers }): string | null {
+  const vercelErr = res.headers.get('x-vercel-error') ?? '';
+  if (/DEPLOYMENT_PAUSED|DEPLOYMENT_DISABLED/i.test(vercelErr) || /DEPLOYMENT_PAUSED/.test(res.text))
+    return 'Vercel project is paused.';
+  const renderRouting = res.headers.get('x-render-routing') ?? '';
+  if (/suspend/i.test(renderRouting) || (res.status >= 400 && /service (has been )?suspended/i.test(res.text)))
+    return 'Render service is suspended.';
+  if (res.status === 540) return 'Supabase project is paused (HTTP 540).';
+  return null;
+}
+
 async function ping(ctx: Ctx, url: string, needs: string[]): Promise<ServiceStatus> {
   try {
     const res = await request(ctx, url);
+    const paused = detectPausedPage(res);
+    if (paused) return { level: 'down', detail: paused, paused: true, source: 'ping', needs, link: url };
     if (res.status < 500) {
       return { level: 'ok', detail: `Site answers (HTTP ${res.status}). Ping only.`, source: 'ping', needs, link: url };
     }
@@ -253,6 +267,93 @@ async function checkPages(ctx: Ctx, cfg: NonNullable<Game['services']['githubPag
   return ping(ctx, siteUrl, ['GH_STATUS_TOKEN']);
 }
 
+// ---------------------------------------------------------------- platform status pages
+/**
+ * Public status pages (no key needed). They say whether the provider itself has an outage,
+ * not whether one of your projects is paused.
+ * Most use the Atlassian Statuspage JSON API; GitHub is read per component (Actions, Pages).
+ */
+export const PLATFORM_STATUS: Record<ServiceKey, { url: string; page: string; component?: string }> = {
+  supabase: { url: 'https://status.supabase.com/api/v2/status.json', page: 'https://status.supabase.com' },
+  resend: { url: 'https://resend-status.com/api/v2/status.json', page: 'https://resend-status.com' },
+  render: { url: 'https://status.render.com/api/v2/status.json', page: 'https://status.render.com' },
+  vercel: { url: 'https://www.vercel-status.com/api/v2/status.json', page: 'https://www.vercel-status.com' },
+  githubActions: {
+    url: 'https://www.githubstatus.com/api/v2/summary.json',
+    page: 'https://www.githubstatus.com',
+    component: 'Actions',
+  },
+  githubPages: {
+    url: 'https://www.githubstatus.com/api/v2/summary.json',
+    page: 'https://www.githubstatus.com',
+    component: 'Pages',
+  },
+};
+
+const INDICATOR: Record<string, ServiceStatus['level']> = { none: 'ok', minor: 'warn', major: 'down', critical: 'down', maintenance: 'warn' };
+const COMPONENT: Record<string, ServiceStatus['level']> = {
+  operational: 'ok',
+  degraded_performance: 'warn',
+  under_maintenance: 'warn',
+  partial_outage: 'down',
+  major_outage: 'down',
+};
+
+type StatusBody = {
+  status?: { indicator?: string; description?: string };
+  components?: { name: string; status: string }[];
+  page?: { status?: string };
+};
+
+export async function checkPlatforms(ctx: Ctx): Promise<Record<ServiceKey, ServiceStatus>> {
+  const cache = new Map<string, Promise<Awaited<ReturnType<typeof request>> | Error>>();
+  const get = (url: string) => {
+    if (!cache.has(url)) cache.set(url, request(ctx, url).catch((e: Error) => e));
+    return cache.get(url)!;
+  };
+  const out = {} as Record<ServiceKey, ServiceStatus>;
+  await Promise.all(
+    SERVICE_KEYS.map(async (k) => {
+      const cfg = PLATFORM_STATUS[k];
+      const res = await get(cfg.url);
+      const link = cfg.page;
+      if (res instanceof Error || !res.ok || typeof res.body !== 'object' || !res.body) {
+        out[k] = { level: 'unknown', detail: 'Status page could not be read.', source: 'api', link };
+        return;
+      }
+      const body = res.body as StatusBody;
+      if (cfg.component) {
+        const c = body.components?.find((x) => x.name === cfg.component);
+        const level = c ? (COMPONENT[c.status] ?? 'warn') : 'unknown';
+        out[k] = { level, detail: c ? `${cfg.component}: ${c.status.replace(/_/g, ' ')}` : 'Component not listed.', source: 'api', link };
+        return;
+      }
+      const ind = body.status?.indicator;
+      if (ind) {
+        out[k] = { level: INDICATOR[ind] ?? 'warn', detail: body.status?.description ?? ind, source: 'api', link };
+        return;
+      }
+      // Instatus-style pages: { page: { status: "UP" | "HASISSUES" | "UNDERMAINTENANCE" } }
+      const ps = body.page?.status;
+      if (ps) {
+        out[k] = { level: ps === 'UP' ? 'ok' : ps === 'UNDERMAINTENANCE' ? 'warn' : 'down', detail: ps, source: 'api', link };
+        return;
+      }
+      out[k] = { level: 'unknown', detail: 'Unrecognised status page format.', source: 'api', link };
+    }),
+  );
+  return out;
+}
+
+// ---------------------------------------------------------------- live site
+/** Pings the game's own link. Catches "paused" pages from Vercel, Render and Supabase without any key. */
+export async function checkSite(game: Game, ctx: Ctx): Promise<ServiceStatus | undefined> {
+  if (!game.playUrl) return undefined;
+  const r = await ping(ctx, game.playUrl, []);
+  const { needs: _n, ...rest } = r;
+  return { ...rest, detail: r.level === 'ok' ? `Site is up (HTTP ${r.detail.match(/HTTP (\d+)/)?.[1] ?? '?'}).` : r.detail };
+}
+
 // ---------------------------------------------------------------- runner
 const UNUSED: ServiceStatus = { level: 'unused', detail: 'Not used by this game.' };
 
@@ -277,6 +378,15 @@ export async function checkGame(game: Game, ctx: Ctx): Promise<Record<ServiceKey
 
 export async function checkAll(games: Game[], env: Env, fetchImpl: Fetch = fetch): Promise<StatusReport> {
   const ctx = { env, fetch: fetchImpl };
-  const entries = await Promise.all(games.map(async (g) => [g.id, await checkGame(g, ctx)] as const));
-  return { generatedAt: new Date().toISOString(), games: Object.fromEntries(entries) };
+  const [entries, sites, platforms] = await Promise.all([
+    Promise.all(games.map(async (g) => [g.id, await checkGame(g, ctx)] as const)),
+    Promise.all(games.map(async (g) => [g.id, await checkSite(g, ctx)] as const)),
+    checkPlatforms(ctx),
+  ]);
+  return {
+    generatedAt: new Date().toISOString(),
+    games: Object.fromEntries(entries),
+    sites: Object.fromEntries(sites.filter(([, s]) => s)) as Record<string, ServiceStatus>,
+    platforms,
+  };
 }

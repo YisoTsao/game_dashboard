@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { GAMES } from './data/games';
 import { Scene } from './scene/Scene';
-import { STATUS_COLORS, STATUS_EMOJI, STATUS_LABELS, worstLevel } from './theme';
+import { STATUS_COLORS, STATUS_EMOJI, STATUS_LABELS, gameLevel } from './theme';
 import type { StatusLevel } from './types';
-import { SERVICE_KEYS } from './types';
+import { SERVICE_KEYS, SERVICE_LABELS } from './types';
 import { Panel } from './ui/Panel';
 import { useStatus } from './useStatus';
 
@@ -19,7 +19,7 @@ export default function App() {
   const overall = useMemo(() => {
     const counts: Record<StatusLevel, number> = { ok: 0, warn: 0, down: 0, unknown: 0, unused: 0 };
     for (const g of GAMES) {
-      const lv = report ? worstLevel(SERVICE_KEYS.map((k) => report.games[g.id]?.[k]?.level ?? 'unknown')) : 'unknown';
+      const lv = gameLevel(report, g.id);
       counts[lv]++;
     }
     return counts;
@@ -51,13 +51,27 @@ export default function App() {
             重新整理
           </button>
         </div>
+        {report?.platforms && (
+          <div className="platforms sketch" aria-label="平台狀態">
+            <span className="platforms-title">平台狀態</span>
+            {SERVICE_KEYS.map((k) => {
+              const p = report.platforms![k];
+              return (
+                <a key={k} className="platform" href={p.link} target="_blank" rel="noreferrer" title={p.detail}>
+                  <i style={{ background: STATUS_COLORS[p.level] }} />
+                  {SERVICE_LABELS[k]}
+                </a>
+              );
+            })}
+          </div>
+        )}
       </header>
 
       <StatusNote state={state} />
 
       <nav className="game-strip" aria-label="Games">
         {GAMES.map((g) => {
-          const lv = report ? worstLevel(SERVICE_KEYS.map((k) => report.games[g.id]?.[k]?.level ?? 'unknown')) : 'unknown';
+          const lv = gameLevel(report, g.id);
           return (
             <span key={g.id} className="game-chip-wrap">
               <button
@@ -95,7 +109,15 @@ export default function App() {
         ))}
       </footer>
 
-      {selected && <Panel game={selected} statuses={report?.games[selected.id]} onClose={() => setSelectedId(null)} />}
+      {selected && (
+        <Panel
+          game={selected}
+          statuses={report?.games[selected.id]}
+          site={report?.sites?.[selected.id]}
+          platforms={report?.platforms}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </div>
   );
 }
