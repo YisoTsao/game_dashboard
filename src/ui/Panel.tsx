@@ -1,0 +1,74 @@
+import { STATUS_COLORS, STATUS_EMOJI, STATUS_LABELS } from '../theme';
+import type { Game, ServiceKey, ServiceStatus } from '../types';
+import { SERVICE_KEYS, SERVICE_LABELS } from '../types';
+
+interface Props {
+  game: Game;
+  statuses?: Record<ServiceKey, ServiceStatus>;
+  onClose: () => void;
+}
+
+/** Paper card with the service list for one game. */
+export function Panel({ game, statuses, onClose }: Props) {
+  return (
+    <aside className="panel sketch" aria-label={`${game.name} services`}>
+      <button className="close sketch-btn" onClick={onClose} aria-label="Close">
+        ✕
+      </button>
+      <h2>
+        <span className="swatch" style={{ background: game.color }} />
+        {game.name}
+      </h2>
+      {game.tagline && <p className="tagline">{game.tagline}</p>}
+      <p className="links">
+        {game.playUrl && (
+          <a href={game.playUrl} target="_blank" rel="noreferrer">
+            ▶ 開啟
+          </a>
+        )}
+        {game.repo && (
+          <a href={`https://github.com/${game.repo}`} target="_blank" rel="noreferrer">
+            ⌥ {game.repo}
+          </a>
+        )}
+      </p>
+      {!game.confirmed && <p className="note">服務對應尚未確認，請編輯 src/data/games.ts。</p>}
+
+      <ul className="services">
+        {SERVICE_KEYS.map((k) => {
+          const st: ServiceStatus = statuses?.[k] ?? {
+            level: game.services[k] ? 'unknown' : 'unused',
+            detail: game.services[k] ? 'Not checked yet.' : 'Not used by this game.',
+          };
+          return (
+            <li key={k} className={`svc lvl-${st.level}`}>
+              <span className="chip" style={{ background: STATUS_COLORS[st.level] }} title={STATUS_LABELS[st.level]}>
+                {STATUS_EMOJI[st.level]}
+              </span>
+              <div className="svc-body">
+                <div className="svc-head">
+                  <strong>{SERVICE_LABELS[k]}</strong>
+                  <span className="lvl">
+                    {STATUS_LABELS[st.level]}
+                    {st.source === 'ping' && ' · ping'}
+                  </span>
+                </div>
+                {st.level !== 'unused' && <div className="detail">{st.detail}</div>}
+                {st.needs && st.needs.length > 0 && (
+                  <div className="needs">
+                    完整檢查需要：{st.needs.map((n) => <code key={n}>{n}</code>)}
+                  </div>
+                )}
+                {st.link && st.level !== 'unused' && (
+                  <a className="svc-link" href={st.link} target="_blank" rel="noreferrer">
+                    查看 ↗
+                  </a>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+}
