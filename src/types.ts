@@ -81,4 +81,8 @@ export interface ServiceStatus {
 export interface StatusReport {
   generatedAt: string;
   games: Record<string, Record<ServiceKey, ServiceStatus>>;
+  /** Result of opening each game's playUrl (no key needed). */
+  sites?: Record<string, ServiceStatus>;
+  /** Each provider's public status page: is the platform itself having an outage? */
+  platforms?: Record<ServiceKey, ServiceStatus>;
 }

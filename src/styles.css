@@ -173,3 +173,16 @@ code { font-family: ui-monospace, monospace; font-size: 0.85em; background: var(
   border: 2px solid var(--ink); border-radius: 50% 45% 50% 40%;
 }
 .label-play:hover { transform: scale(1.15); }
+
+/* ---- platform status + site row ---- */
+.platforms {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: flex-end;
+  padding: 4px 12px; font: 1rem var(--font-hand); margin-left: auto; max-width: max-content;
+}
+.platforms-title { font-weight: 700; }
+.platform { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); text-decoration: none; }
+.platform i { width: 11px; height: 11px; border: 2px solid var(--ink); border-radius: 50%; }
+.site-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; font-size: 0.88rem; }
+.site-row strong { font: 700 1.1rem var(--font-hand); }
+.platform-note { margin-top: 3px; padding: 2px 6px; background: #fff3c4; border-radius: 6px; font-size: 0.8rem; }
+@media (max-width: 640px) { .platforms { justify-content: flex-start; margin-left: 0; } }

@@ -2,14 +2,15 @@ import { Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useRef, useState, type RefObject } from 'react';
 import type { Group } from 'three';
-import { GRASS_SIDE, STATUS_COLORS, STATUS_EMOJI, worstLevel } from '../theme';
-import type { Game, ServiceKey, ServiceStatus } from '../types';
+import { GRASS_SIDE, STATUS_COLORS, STATUS_EMOJI, gameLevel } from '../theme';
+import type { Game, ServiceKey, ServiceStatus, StatusReport } from '../types';
 import { SERVICE_KEYS } from '../types';
 import { ToonMesh } from './ToonMesh';
 
 interface Props {
   game: Game;
   statuses?: Record<ServiceKey, ServiceStatus>;
+  report?: StatusReport;
   position: [number, number, number];
   index: number;
   selected: boolean;
@@ -19,7 +20,7 @@ interface Props {
 }
 
 /** A floating island. Flags around the rim show each service; the balloon shows the worst status. */
-export function Island({ game, statuses, position, index, selected, onSelect, labelRoot }: Props) {
+export function Island({ game, statuses, report, position, index, selected, onSelect, labelRoot }: Props) {
   const ref = useRef<Group>(null);
   const [hover, setHover] = useState(false);
 
@@ -33,9 +34,8 @@ export function Island({ game, statuses, position, index, selected, onSelect, la
     g.scale.setScalar(g.scale.x + (target - g.scale.x) * 0.15);
   });
 
-  const levels = SERVICE_KEYS.map((k) => statuses?.[k]?.level ?? 'unknown');
   const used = game.services;
-  const overall = statuses ? worstLevel(levels) : 'unknown';
+  const overall = gameLevel(report, game.id);
 
   return (
     <group

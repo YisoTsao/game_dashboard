@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { checkGame, type Fetch } from '../src/status/checks';
+import { checkAll, checkGame, checkPlatforms, checkSite, type Fetch } from '../src/status/checks';
 import type { Game } from '../src/types';
 
 /** Fake fetch: routes are matched by URL prefix. */
-function fakeFetch(routes: Record<string, [number, unknown]>): Fetch & { calls: { url: string; auth?: string }[] } {
+function fakeFetch(routes: Record<string, [number, unknown] | [number, unknown, Record<string, string>]>): Fetch & { calls: { url: string; auth?: string }[] } {
   const calls: { url: string; auth?: string }[] = [];
   const fn = (async (url: string, init?: RequestInit) => {
     const headers = (init?.headers ?? {}) as Record<string, string>;
     calls.push({ url, auth: headers.authorization });
     const key = Object.keys(routes).find((k) => url.startsWith(k));
     if (!key) throw new TypeError('fetch failed');
-    const [status, body] = routes[key];
-    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+    const [status, body, resHeaders] = routes[key] as [number, unknown, Record<string, string>?];
+    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: resHeaders });
   }) as unknown as Fetch & { calls: typeof calls };
   fn.calls = calls;
   return fn;
@@ -161,5 +161,50 @@ describe('checkGame', () => {
       fetch: fakeFetch({ 'https://api.vercel.com/v9/projects/p': [200, { id: 'prj_1', paused: true }] }),
     });
     expect(r.vercel).toMatchObject({ level: 'down', paused: true });
+  });
+
+  it('Platforms: reads Statuspage indicators and GitHub components without any key', async () => {
+    const f = fakeFetch({
+      'https://status.supabase.com/': [200, { status: { indicator: 'none', description: 'All Systems Operational' } }],
+      'https://resend-status.com/': [200, { page: { status: 'HASISSUES' } }],
+      'https://status.render.com/': [200, { status: { indicator: 'minor', description: 'Minor Service Outage' } }],
+      'https://www.vercel-status.com/': [500, 'oops'],
+      'https://www.githubstatus.com/': [
+        200,
+        { components: [{ name: 'Actions', status: 'operational' }, { name: 'Pages', status: 'major_outage' }] },
+      ],
+    });
+    const p = await checkPlatforms({ env: {}, fetch: f });
+    expect(p.supabase.level).toBe('ok');
+    expect(p.resend.level).toBe('down');
+    expect(p.render.level).toBe('warn');
+    expect(p.vercel.level).toBe('unknown');
+    expect(p.githubActions.level).toBe('ok');
+    expect(p.githubPages.level).toBe('down');
+    // GitHub summary fetched once for both components
+    expect(f.calls.filter((c) => c.url.includes('githubstatus')).length).toBe(1);
+  });
+
+  it('Site: up, Vercel paused page, Render suspended page', async () => {
+    const game = { ...base, playUrl: 'https://g.example/' };
+    const up = await checkSite(game, { env: {}, fetch: fakeFetch({ 'https://g.example/': [200, '<html>'] }) });
+    expect(up?.level).toBe('ok');
+    const vercel = await checkSite(game, {
+      env: {},
+      fetch: fakeFetch({ 'https://g.example/': [503, 'paused', { 'x-vercel-error': 'DEPLOYMENT_PAUSED' }] }),
+    });
+    expect(vercel).toMatchObject({ level: 'down', paused: true });
+    const render = await checkSite(game, {
+      env: {},
+      fetch: fakeFetch({ 'https://g.example/': [503, '<h1>This service has been suspended.</h1>'] }),
+    });
+    expect(render).toMatchObject({ level: 'down', paused: true });
+    expect(await checkSite(base, { env: {}, fetch: fakeFetch({}) })).toBeUndefined();
+  });
+
+  it('checkAll: report includes sites and platforms', async () => {
+    const r = await checkAll([{ ...base, playUrl: 'https://g.example/' }], {}, fakeFetch({ 'https://g.example/': [200, 'ok'] }));
+    expect(r.sites?.g.level).toBe('ok');
+    expect(Object.keys(r.platforms ?? {})).toHaveLength(6);
   });
 });

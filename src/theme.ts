@@ -1,4 +1,5 @@
-import type { StatusLevel } from './types';
+import type { StatusLevel, StatusReport } from './types';
+import { SERVICE_KEYS } from './types';
 
 /** Design tokens shared by the 3D scene and the HTML UI. See docs/STYLE_GUIDE.md. */
 export const INK = '#2B2118';
@@ -36,4 +37,13 @@ const RANK: Record<StatusLevel, number> = { down: 4, warn: 3, unknown: 2, ok: 1,
 /** The worst level in a list, ignoring "unused". Returns "unused" when nothing is used. */
 export function worstLevel(levels: StatusLevel[]): StatusLevel {
   return levels.reduce<StatusLevel>((acc, l) => (RANK[l] > RANK[acc] ? l : acc), 'unused');
+}
+
+/** A game's overall level: its services plus whether its link opens. */
+export function gameLevel(report: StatusReport | undefined, gameId: string): StatusLevel {
+  if (!report) return 'unknown';
+  const levels = SERVICE_KEYS.map((k) => report.games[gameId]?.[k]?.level ?? 'unknown');
+  const site = report.sites?.[gameId];
+  if (site) levels.push(site.level);
+  return worstLevel(levels);
 }

@@ -5,11 +5,14 @@ import { SERVICE_KEYS, SERVICE_LABELS } from '../types';
 interface Props {
   game: Game;
   statuses?: Record<ServiceKey, ServiceStatus>;
+  /** Result of opening the game's link. */
+  site?: ServiceStatus;
+  platforms?: Record<ServiceKey, ServiceStatus>;
   onClose: () => void;
 }
 
 /** Paper card with the service list for one game. */
-export function Panel({ game, statuses, onClose }: Props) {
+export function Panel({ game, statuses, site, platforms, onClose }: Props) {
   return (
     <aside className="panel sketch" aria-label={`${game.name} services`}>
       <button className="close sketch-btn" onClick={onClose} aria-label="Close">
@@ -25,6 +28,15 @@ export function Panel({ game, statuses, onClose }: Props) {
           ▶ {game.kind === 'game' ? '進入遊戲' : '開啟網頁'}
           <span className="play-url">{game.playUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
         </a>
+      )}
+      {site && (
+        <p className={`site-row lvl-${site.level}`}>
+          <span className="chip" style={{ background: STATUS_COLORS[site.level] }}>
+            {STATUS_EMOJI[site.level]}
+          </span>
+          <strong>網站</strong> {site.paused ? '已暫停：' : ''}
+          {site.detail}
+        </p>
       )}
       <p className="links">
         {game.repo && (
@@ -55,6 +67,11 @@ export function Panel({ game, statuses, onClose }: Props) {
                   </span>
                 </div>
                 {st.level !== 'unused' && <div className="detail">{st.detail}</div>}
+                {st.level !== 'unused' && platforms?.[k] && (platforms[k].level === 'warn' || platforms[k].level === 'down') && (
+                  <div className="platform-note">
+                    {SERVICE_LABELS[k]} 平台事件：{platforms[k].detail}
+                  </div>
+                )}
                 {st.needs && st.needs.length > 0 && (
                   <div className="needs">
                     完整檢查需要：{st.needs.map((n) => <code key={n}>{n}</code>)}

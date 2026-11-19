@@ -40,6 +40,15 @@ API keys are only read by the Node script (locally from `.env`, in CI from GitHu
 | 未知 unknown | No credential to check it. The panel names the env var that would enable it |
 | 未使用 unused | The game does not use this service |
 
+## What works without any key
+
+- **Platform status (平台狀態)**: each provider's public status page (Supabase, Resend, Render, Vercel, and GitHub's Actions and Pages components). This shows whether the provider itself has an outage. It cannot tell you about your own project.
+- **Site (網站)**: opens each game's `playUrl`. A down site shows as 異常. When a host serves its "paused" page instead of the game, it is flagged **已暫停**: Vercel `DEPLOYMENT_PAUSED`, Render "service suspended", Supabase HTTP 540.
+- **Supabase project**: pings `https://<ref>.supabase.co/auth/v1/health`. HTTP 540 means the project is paused.
+- **GitHub Actions / Pages**: the public API works for public repos.
+
+A key is still needed for whatever a public URL cannot show: Resend domain status, a Render service that has no public URL, Vercel deployment state, and the exact Supabase status.
+
 ## What each check needs
 
 | Service | Env var | What is checked | Without the key |
