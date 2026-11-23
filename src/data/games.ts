@@ -5,8 +5,12 @@ import type { Game } from '../types';
  *
  * - Leave a service out of `services` if the game does not use it (it shows as "not used").
  * - `playUrl` is the "enter" link shown on the island, the bottom bar and the panel.
- * - A service with a missing id (Supabase projectRef, Render serviceId) shows as "unknown"
- *   and the panel says what to fill in.
+ * - The light is green only when the three core checks pass: the game is playable (playUrl
+ *   answers 200), the database answers (supabase), and Render is up (render). A game that does
+ *   not use Supabase or Render is judged on the checks it has.
+ * - Supabase `publishableKey` is the public key the game's own page already ships; it lets the
+ *   database check run without a secret. Render `url` is the service's public address.
+ * - A core check with nothing to test with shows as "unknown" (grey) and the panel says what to fill in.
  * - `tokenEnv` lets one project use a different API key, e.g. a Supabase project that lives
  *   in another account.
  *
@@ -22,9 +26,13 @@ export const GAMES: Game[] = [
     playUrl: 'https://mistwood.yisoapp.com/',
     repo: 'YisoTsao/misty-forest',
     services: {
-      supabase: { projectRef: 'dnnlmunlmmhiqpgkjbvr', name: 'mistwood' },
+      supabase: {
+        projectRef: 'dnnlmunlmmhiqpgkjbvr',
+        name: 'mistwood',
+        publishableKey: 'sb_publishable_iDyxbRYaPdxnLe5dnqwGaw_fVzcFLlk',
+      },
       resend: {}, // TODO: set `domain` to the sending domain to check its verification
-      render: {}, // TODO: set `serviceId` ("srv-...") and `url`
+      render: {}, // TODO: set `url` to the Render address, e.g. 'https://xxx.onrender.com' (needed for a green light)
       vercel: { project: 'mistwood', url: 'https://mistwood.yisoapp.com/' },
       githubActions: { repo: 'YisoTsao/misty-forest' },
     },
@@ -102,8 +110,12 @@ export const GAMES: Game[] = [
     playUrl: 'https://web-rose-sigma-54.vercel.app/',
     repo: 'YisoTsao/xiangqi-arena',
     services: {
-      supabase: { projectRef: 'njbbyyuzqzzllvronqgn', name: 'xiangqi-arena' },
-      render: {}, // TODO: set `serviceId` ("srv-...") and `url`
+      supabase: {
+        projectRef: 'njbbyyuzqzzllvronqgn',
+        name: 'xiangqi-arena',
+        publishableKey: 'sb_publishable__d16FrMDRlU8wIbI1IB77w_LZYvT_b2',
+      },
+      render: {}, // TODO: set `url` to the Render address, e.g. 'https://xxx.onrender.com' (needed for a green light)
       vercel: { project: 'xiangqi-good', url: 'https://web-rose-sigma-54.vercel.app/' },
       githubActions: { repo: 'YisoTsao/xiangqi-arena' },
     },

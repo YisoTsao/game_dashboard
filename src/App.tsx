@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { GAMES } from './data/games';
 import { Scene } from './scene/Scene';
-import { STATUS_COLORS, STATUS_EMOJI, STATUS_LABELS, gameLevel } from './theme';
+import { STATUS_COLORS, STATUS_EMOJI, STATUS_LABELS, coreChecks, gameLevel } from './theme';
 import type { StatusLevel } from './types';
 import { SERVICE_KEYS, SERVICE_LABELS } from './types';
 import { Panel } from './ui/Panel';
@@ -113,7 +113,8 @@ export default function App() {
         <Panel
           game={selected}
           statuses={report?.games[selected.id]}
-          site={report?.sites?.[selected.id]}
+          core={report ? coreChecks(report, selected.id) : undefined}
+          level={gameLevel(report, selected.id)}
           platforms={report?.platforms}
           onClose={() => setSelectedId(null)}
         />

@@ -1,5 +1,5 @@
-import type { StatusLevel, StatusReport } from './types';
-import { SERVICE_KEYS } from './types';
+import type { CoreCheck, ServiceStatus, StatusLevel, StatusReport } from './types';
+import { CORE_CHECKS } from './types';
 
 /** Design tokens shared by the 3D scene and the HTML UI. See docs/STYLE_GUIDE.md. */
 export const INK = '#2B2118';
@@ -39,11 +39,21 @@ export function worstLevel(levels: StatusLevel[]): StatusLevel {
   return levels.reduce<StatusLevel>((acc, l) => (RANK[l] > RANK[acc] ? l : acc), 'unused');
 }
 
-/** A game's overall level: its services plus whether its link opens. */
+/**
+ * The three checks behind a game's light, or undefined for a check the game does not have.
+ * playable = its link answers 200, db = Supabase database answers, render = Render service is up.
+ */
+export function coreChecks(report: StatusReport | undefined, gameId: string): Record<CoreCheck, ServiceStatus | undefined> {
+  const g = report?.games[gameId];
+  const used = (s: ServiceStatus | undefined) => (s && s.level !== 'unused' ? s : undefined);
+  return { playable: report?.sites?.[gameId], db: used(g?.supabase), render: used(g?.render) };
+}
+
+/** A game's light: green only when every core check it has is ok. Other services do not change it. */
 export function gameLevel(report: StatusReport | undefined, gameId: string): StatusLevel {
   if (!report) return 'unknown';
-  const levels = SERVICE_KEYS.map((k) => report.games[gameId]?.[k]?.level ?? 'unknown');
-  const site = report.sites?.[gameId];
-  if (site) levels.push(site.level);
+  const checks = coreChecks(report, gameId);
+  const levels = CORE_CHECKS.map((k) => checks[k]?.level).filter(Boolean) as StatusLevel[];
+  if (levels.length === 0) return 'unknown';
   return worstLevel(levels);
 }

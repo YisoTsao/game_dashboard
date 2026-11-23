@@ -29,6 +29,18 @@ src/ui/                HTML panel
 
 API keys are only read by the Node script (locally from `.env`, in CI from GitHub secrets). The web page only reads the finished `status.json`, so keys never reach the browser. `status.json` contains status text only, but note it is public if the site is public.
 
+## The light (燈號)
+
+A game's light is green only when all three of these pass. Other services (Resend, Vercel, GitHub Actions, GitHub Pages) still show in the panel but do not change the light.
+
+| Check | How it is measured | Key needed |
+|---|---|---|
+| 遊戲可玩 playable | Opens `playUrl`. Must return **HTTP 200** with an HTML page. A 404, a login wall, or a host's "paused" page is 異常 | None |
+| 資料庫連線 database | With `SUPABASE_ACCESS_TOKEN`: management API `/v1/projects/<ref>/health?services=db`. Without it: calls `https://<ref>.supabase.co/rest/v1/` with the project's public `publishableKey` (set in games.ts). PostgREST answers by querying Postgres, so 200 means the DB connection works and 503 / `PGRST000-003` means it does not | None (uses the public key) |
+| Render 服務 | Pings `render.url` (waits up to 70 s, since free instances sleep). Under 500 and not a "suspended" page is ok. With `RENDER_API_KEY` + `serviceId`: suspended flag and latest deploy | None, but `render.url` must be set |
+
+A game that does not use Supabase or Render is judged on the checks it has. A check with nothing to test with is 未知 (grey), so the light cannot turn green on a guess.
+
 ## Statuses
 
 | Status | Meaning |

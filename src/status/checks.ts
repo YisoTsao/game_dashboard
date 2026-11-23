@@ -9,15 +9,17 @@ export type Env = Record<string, string | undefined>;
 export type Fetch = typeof fetch;
 
 const TIMEOUT_MS = 10_000;
+/** Render free instances sleep and take up to about a minute to wake on the first request. */
+const RENDER_WAKE_MS = 70_000;
 
 interface Ctx {
   env: Env;
   fetch: Fetch;
 }
 
-async function request(ctx: Ctx, url: string, headers: Record<string, string> = {}) {
+async function request(ctx: Ctx, url: string, headers: Record<string, string> = {}, timeoutMs = TIMEOUT_MS) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await ctx.fetch(url, {
       headers: { 'user-agent': 'game-dashboard-status', ...headers },
@@ -55,9 +57,9 @@ export function detectPausedPage(res: { status: number; text: string; headers: H
   return null;
 }
 
-async function ping(ctx: Ctx, url: string, needs: string[]): Promise<ServiceStatus> {
+async function ping(ctx: Ctx, url: string, needs: string[], timeoutMs = TIMEOUT_MS): Promise<ServiceStatus> {
   try {
-    const res = await request(ctx, url);
+    const res = await request(ctx, url, {}, timeoutMs);
     const paused = detectPausedPage(res);
     if (paused) return { level: 'down', detail: paused, paused: true, source: 'ping', needs, link: url };
     if (res.status < 500) {
@@ -73,11 +75,23 @@ function unknown(needs: string[], why: string): ServiceStatus {
   return { level: 'unknown', detail: why, source: 'none', needs };
 }
 
-// ---------------------------------------------------------------- Supabase
+// ---------------------------------------------------------------- Supabase (database connection)
 /** Supabase management API statuses that mean the project is paused or gone. */
 const SUPABASE_PAUSED = /INACTIVE|PAUSED|PAUSING|REMOVED|GOING_DOWN/;
-const SUPABASE_BROKEN = /RESTORE_FAILED|INIT_FAILED|UPGRADE_FAILED|PAUSE_FAILED/;
 
+/** PostgREST error codes that mean it could not reach Postgres. */
+const PGRST_NO_DB = /"code"\s*:\s*"PGRST00[0-3]"/;
+/** A Postgres SQLSTATE in the body (e.g. "42501" permission denied) proves the query reached the database. */
+const PG_SQLSTATE = /"code"\s*:\s*"[0-9A-Z]{5}"/;
+
+/**
+ * Is the game's database reachable?
+ *
+ * - With an access token: Supabase management API service health for "db".
+ * - Without one: calls the project's REST API (PostgREST) with the public publishable key.
+ *   PostgREST answers that request by querying Postgres, so a 200 means the database
+ *   connection works, and a 503 / PGRST000-003 means PostgREST cannot reach it.
+ */
 async function checkSupabase(ctx: Ctx, cfg: NonNullable<Game['services']['supabase']>): Promise<ServiceStatus> {
   const tokenEnv = cfg.tokenEnv ?? 'SUPABASE_ACCESS_TOKEN';
   if (!cfg.projectRef) {
@@ -88,39 +102,59 @@ async function checkSupabase(ctx: Ctx, cfg: NonNullable<Game['services']['supaba
   }
   const link = `https://supabase.com/dashboard/project/${cfg.projectRef}`;
   const token = ctx.env[tokenEnv];
-  if (!token) {
-    // Without a token we can still see whether the API host answers. A paused project answers 540.
-    const url = `https://${cfg.projectRef}.supabase.co/auth/v1/health`;
-    try {
-      const res = await request(ctx, url);
-      if (res.status === 540)
-        return { level: 'down', detail: 'Project is paused (HTTP 540).', paused: true, source: 'ping', needs: [tokenEnv], link };
-    } catch {
-      // handled by ping below
-    }
-    return { ...(await ping(ctx, url, [tokenEnv])), link };
-  }
+  if (token) return { ...(await supabaseHealthApi(ctx, cfg.projectRef, token, tokenEnv)), link };
+  if (cfg.publishableKey) return { ...(await supabaseRestProbe(ctx, cfg.projectRef, cfg.publishableKey, tokenEnv)), link };
+  return {
+    ...unknown(['supabase.publishableKey in games.ts', tokenEnv], 'No key to test the database connection.'),
+    link,
+  };
+}
+
+async function supabaseHealthApi(ctx: Ctx, ref: string, token: string, tokenEnv: string): Promise<ServiceStatus> {
+  const auth = { authorization: `Bearer ${token}` };
   try {
-    const res = await request(ctx, `https://api.supabase.com/v1/projects/${cfg.projectRef}`, {
-      authorization: `Bearer ${token}`,
-    });
+    const res = await request(ctx, `https://api.supabase.com/v1/projects/${ref}/health?services=db`, auth);
     if (res.status === 401 || res.status === 403 || res.status === 404)
       return {
         level: 'unknown',
         detail: `Token cannot see this project (HTTP ${res.status}). Is it in another Supabase account?`,
         source: 'api',
         needs: [tokenEnv],
-        link,
       };
-    if (!res.ok) return { level: 'down', detail: `Supabase API returned HTTP ${res.status}.`, source: 'api', link };
-    const status = String((res.body as { status?: string })?.status ?? 'UNKNOWN');
-    if (status === 'ACTIVE_HEALTHY') return { level: 'ok', detail: 'Project is active and healthy.', source: 'api', link };
+    const db = Array.isArray(res.body)
+      ? (res.body as { name?: string; healthy?: boolean; status?: string }[]).find((x) => x.name === 'db')
+      : undefined;
+    if (res.ok && db?.healthy) return { level: 'ok', detail: 'Database is connected and healthy.', source: 'api' };
+    // Not healthy: say why, and flag a paused project.
+    const proj = await request(ctx, `https://api.supabase.com/v1/projects/${ref}`, auth);
+    const status = String((proj.body as { status?: string })?.status ?? '');
     if (SUPABASE_PAUSED.test(status))
-      return { level: 'down', detail: `Project is paused (${status}). Restore it in the Supabase dashboard.`, paused: true, source: 'api', link };
-    if (SUPABASE_BROKEN.test(status)) return { level: 'down', detail: `Project status: ${status}.`, source: 'api', link };
-    return { level: 'warn', detail: `Project status: ${status}.`, source: 'api', link };
+      return { level: 'down', detail: `Project is paused (${status}). Restore it in the Supabase dashboard.`, paused: true, source: 'api' };
+    const why = db?.status ?? (res.ok ? 'no db entry' : `HTTP ${res.status}`);
+    return { level: 'down', detail: `Database is not healthy (${why}).`, source: 'api' };
   } catch (err) {
-    return { ...errorStatus(err), link };
+    return errorStatus(err);
+  }
+}
+
+async function supabaseRestProbe(ctx: Ctx, ref: string, key: string, tokenEnv: string): Promise<ServiceStatus> {
+  const url = `https://${ref}.supabase.co/rest/v1/`;
+  try {
+    const res = await request(ctx, url, { apikey: key, accept: 'application/openapi+json' });
+    if (res.status === 540) return { level: 'down', detail: 'Project is paused (HTTP 540).', paused: true, source: 'ping' };
+    if (res.status === 200) return { level: 'ok', detail: 'Database answers through the REST API.', source: 'ping', needs: [tokenEnv] };
+    if (res.status >= 500 || PGRST_NO_DB.test(res.text))
+      return { level: 'down', detail: `REST API cannot reach the database (HTTP ${res.status}).`, source: 'ping', needs: [tokenEnv] };
+    if (PG_SQLSTATE.test(res.text))
+      return { level: 'ok', detail: `Database answered (HTTP ${res.status} from Postgres).`, source: 'ping', needs: [tokenEnv] };
+    return {
+      level: 'unknown',
+      detail: `REST API returned HTTP ${res.status}, which does not show whether the database is connected.`,
+      source: 'ping',
+      needs: [tokenEnv],
+    };
+  } catch (err) {
+    return { ...errorStatus(err), source: 'ping', needs: [tokenEnv] };
   }
 }
 
@@ -160,8 +194,14 @@ async function checkRender(ctx: Ctx, cfg: NonNullable<Game['services']['render']
   const link = cfg.serviceId ? `https://dashboard.render.com/web/${cfg.serviceId}` : 'https://dashboard.render.com';
   if (!key || !cfg.serviceId) {
     const needs = [!cfg.serviceId && 'render.serviceId in games.ts', !key && keyEnv].filter(Boolean) as string[];
-    if (cfg.url) return { ...(await ping(ctx, cfg.url, needs)), link };
-    return { ...unknown(needs, cfg.serviceId ? 'No Render API key set.' : 'Render service id not set.'), link };
+    if (cfg.url) {
+      const r = await ping(ctx, cfg.url, needs.filter((n) => n === keyEnv), RENDER_WAKE_MS);
+      return { ...r, detail: r.level === 'ok' ? r.detail.replace('Site answers', 'Service answers') : r.detail, link };
+    }
+    return {
+      ...unknown(['render.url in games.ts'], 'Render service URL not set.'),
+      link,
+    };
   }
   try {
     const auth = { authorization: `Bearer ${key}`, accept: 'application/json' };
@@ -345,13 +385,26 @@ export async function checkPlatforms(ctx: Ctx): Promise<Record<ServiceKey, Servi
   return out;
 }
 
-// ---------------------------------------------------------------- live site
-/** Pings the game's own link. Catches "paused" pages from Vercel, Render and Supabase without any key. */
+// ---------------------------------------------------------------- playable (live site)
+/**
+ * Is the game playable? Opens the game's own link and requires HTTP 200 with an HTML page.
+ * A 404, a login wall (401/403) or a host's "paused" page all count as not playable.
+ */
 export async function checkSite(game: Game, ctx: Ctx): Promise<ServiceStatus | undefined> {
   if (!game.playUrl) return undefined;
-  const r = await ping(ctx, game.playUrl, []);
-  const { needs: _n, ...rest } = r;
-  return { ...rest, detail: r.level === 'ok' ? `Site is up (HTTP ${r.detail.match(/HTTP (\d+)/)?.[1] ?? '?'}).` : r.detail };
+  const link = game.playUrl;
+  try {
+    const res = await request(ctx, game.playUrl);
+    const paused = detectPausedPage(res);
+    if (paused) return { level: 'down', detail: paused, paused: true, source: 'ping', link };
+    if (res.status !== 200) return { level: 'down', detail: `Game page returned HTTP ${res.status}, not 200.`, source: 'ping', link };
+    const type = res.headers.get('content-type') ?? '';
+    const looksHtml = /text\/html/i.test(type) || /<(!doctype html|html|body|div)\b/i.test(res.text);
+    if (!looksHtml) return { level: 'warn', detail: 'Game page answered 200 but is not an HTML page.', source: 'ping', link };
+    return { level: 'ok', detail: 'Game page loads (HTTP 200).', source: 'ping', link };
+  } catch (err) {
+    return { ...errorStatus(err), source: 'ping', link };
+  }
 }
 
 // ---------------------------------------------------------------- runner

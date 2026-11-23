@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { checkAll, checkGame, checkPlatforms, checkSite, type Fetch } from '../src/status/checks';
-import type { Game } from '../src/types';
+import { gameLevel } from '../src/theme';
+import type { Game, ServiceKey, ServiceStatus, StatusReport } from '../src/types';
+import { SERVICE_KEYS } from '../src/types';
 
 /** Fake fetch: routes are matched by URL prefix. */
 function fakeFetch(routes: Record<string, [number, unknown] | [number, unknown, Record<string, string>]>): Fetch & { calls: { url: string; auth?: string }[] } {
@@ -25,24 +27,49 @@ describe('checkGame', () => {
     expect(Object.values(r).every((s) => s.level === 'unused')).toBe(true);
   });
 
-  it('Supabase: API status when a token is set', async () => {
+  it('DB (token): management API db health', async () => {
     const game = { ...base, services: { supabase: { projectRef: 'abc' } } };
     const ok = await checkGame(game, {
       env: { SUPABASE_ACCESS_TOKEN: 't' },
-      fetch: fakeFetch({ 'https://api.supabase.com/v1/projects/abc': [200, { status: 'ACTIVE_HEALTHY' }] }),
+      fetch: fakeFetch({ 'https://api.supabase.com/v1/projects/abc/health': [200, [{ name: 'db', healthy: true, status: 'ACTIVE_HEALTHY' }]] }),
     });
-    expect(ok.supabase.level).toBe('ok');
-    const paused = await checkGame(game, {
+    expect(ok.supabase).toMatchObject({ level: 'ok', source: 'api' });
+    const bad = await checkGame(game, {
       env: { SUPABASE_ACCESS_TOKEN: 't' },
-      fetch: fakeFetch({ 'https://api.supabase.com/v1/projects/abc': [200, { status: 'INACTIVE' }] }),
+      fetch: fakeFetch({
+        'https://api.supabase.com/v1/projects/abc/health': [200, [{ name: 'db', healthy: false, status: 'UNHEALTHY' }]],
+        'https://api.supabase.com/v1/projects/abc': [200, { status: 'ACTIVE_HEALTHY' }],
+      }),
     });
-    expect(paused.supabase.level).toBe('down');
+    expect(bad.supabase).toMatchObject({ level: 'down', detail: expect.stringContaining('UNHEALTHY') });
   });
 
-  it('Supabase: ping only, and names the token, when no token is set', async () => {
+  it('DB (no token): REST API with the publishable key', async () => {
+    const game = { ...base, services: { supabase: { projectRef: 'abc', publishableKey: 'sb_publishable_x' } } };
+    const f = fakeFetch({ 'https://abc.supabase.co/rest/v1/': [200, { swagger: '2.0' }] });
+    const ok = await checkGame(game, { env: {}, fetch: f });
+    expect(ok.supabase).toMatchObject({ level: 'ok', source: 'ping', needs: ['SUPABASE_ACCESS_TOKEN'] });
+    const noDb = await checkGame(game, {
+      env: {},
+      fetch: fakeFetch({ 'https://abc.supabase.co/rest/v1/': [503, { code: 'PGRST001', message: 'Database client error' }] }),
+    });
+    expect(noDb.supabase.level).toBe('down');
+    const pgDenied = await checkGame(game, {
+      env: {},
+      fetch: fakeFetch({ 'https://abc.supabase.co/rest/v1/': [401, { code: '42501', message: 'permission denied' }] }),
+    });
+    expect(pgDenied.supabase.level).toBe('ok');
+    const gatewayOnly = await checkGame(game, {
+      env: {},
+      fetch: fakeFetch({ 'https://abc.supabase.co/rest/v1/': [401, { message: 'Invalid API key' }] }),
+    });
+    expect(gatewayOnly.supabase.level).toBe('unknown');
+  });
+
+  it('DB: no token and no publishable key is unknown, not green', async () => {
     const game = { ...base, services: { supabase: { projectRef: 'abc' } } };
-    const r = await checkGame(game, { env: {}, fetch: fakeFetch({ 'https://abc.supabase.co/': [401, {}] }) });
-    expect(r.supabase).toMatchObject({ level: 'ok', source: 'ping', needs: ['SUPABASE_ACCESS_TOKEN'] });
+    const r = await checkGame(game, { env: {}, fetch: fakeFetch({}) });
+    expect(r.supabase).toMatchObject({ level: 'unknown', needs: ['supabase.publishableKey in games.ts', 'SUPABASE_ACCESS_TOKEN'] });
   });
 
   it('Resend: unknown without key, verified domain is ok, restricted key is unknown', async () => {
@@ -79,6 +106,17 @@ describe('checkGame', () => {
       }),
     });
     expect(ok.render.level).toBe('ok');
+  });
+
+  it('Render (no key): pings the service URL; missing URL is unknown', async () => {
+    const game = { ...base, services: { render: { url: 'https://api.onrender.com/' } } };
+    const up = await checkGame(game, { env: {}, fetch: fakeFetch({ 'https://api.onrender.com/': [404, 'Not Found'] }) });
+    expect(up.render).toMatchObject({ level: 'ok', source: 'ping', needs: ['RENDER_API_KEY'] });
+    const down = await checkGame(game, { env: {}, fetch: fakeFetch({ 'https://api.onrender.com/': [502, 'Bad gateway'] }) });
+    expect(down.render.level).toBe('down');
+    const none = await checkGame({ ...base, services: { render: {} } }, { env: {}, fetch: fakeFetch({}) });
+    expect(none.render).toMatchObject({ level: 'unknown' });
+    expect(none.render.needs).toContain('render.url in games.ts');
   });
 
   it('Vercel: READY production deploy is ok and passes the team id', async () => {
@@ -128,14 +166,17 @@ describe('checkGame', () => {
     const game = { ...base, services: { supabase: { projectRef: 'abc' } } };
     const r = await checkGame(game, {
       env: { SUPABASE_ACCESS_TOKEN: 't' },
-      fetch: fakeFetch({ 'https://api.supabase.com/v1/projects/abc': [200, { status: 'INACTIVE' }] }),
+      fetch: fakeFetch({
+        'https://api.supabase.com/v1/projects/abc/health': [200, [{ name: 'db', healthy: false, status: 'UNHEALTHY' }]],
+        'https://api.supabase.com/v1/projects/abc': [200, { status: 'INACTIVE' }],
+      }),
     });
     expect(r.supabase).toMatchObject({ level: 'down', paused: true });
   });
 
   it('Supabase: per-project tokenEnv picks the other account token', async () => {
     const game = { ...base, services: { supabase: { projectRef: 'abc', tokenEnv: 'SUPABASE_ACCESS_TOKEN_CALO' } } };
-    const f = fakeFetch({ 'https://api.supabase.com/v1/projects/abc': [200, { status: 'ACTIVE_HEALTHY' }] });
+    const f = fakeFetch({ 'https://api.supabase.com/v1/projects/abc/health': [200, [{ name: 'db', healthy: true }]] });
     const r = await checkGame(game, { env: { SUPABASE_ACCESS_TOKEN: 'main', SUPABASE_ACCESS_TOKEN_CALO: 'calo' }, fetch: f });
     expect(r.supabase.level).toBe('ok');
     expect(f.calls[0].auth).toBe('Bearer calo');
@@ -149,7 +190,7 @@ describe('checkGame', () => {
   });
 
   it('Supabase: paused project answers 540 on ping', async () => {
-    const game = { ...base, services: { supabase: { projectRef: 'abc' } } };
+    const game = { ...base, services: { supabase: { projectRef: 'abc', publishableKey: 'k' } } };
     const r = await checkGame(game, { env: {}, fetch: fakeFetch({ 'https://abc.supabase.co/': [540, 'paused'] }) });
     expect(r.supabase).toMatchObject({ level: 'down', paused: true, source: 'ping' });
   });
@@ -202,8 +243,42 @@ describe('checkGame', () => {
     expect(await checkSite(base, { env: {}, fetch: fakeFetch({}) })).toBeUndefined();
   });
 
+  it('Playable: requires 200, so a 404 or login wall is down', async () => {
+    const game = { ...base, playUrl: 'https://g.example/' };
+    const nf = await checkSite(game, { env: {}, fetch: fakeFetch({ 'https://g.example/': [404, 'Not Found'] }) });
+    expect(nf?.level).toBe('down');
+    const auth = await checkSite(game, { env: {}, fetch: fakeFetch({ 'https://g.example/': [401, 'Login'] }) });
+    expect(auth?.level).toBe('down');
+    const json = await checkSite(game, { env: {}, fetch: fakeFetch({ 'https://g.example/': [200, { ok: true }] }) });
+    expect(json?.level).toBe('warn');
+  });
+});
+
+describe('gameLevel (the light)', () => {
+  const ok = { level: 'ok' as const, detail: '' };
+  const report = (games: Record<string, Partial<Record<ServiceKey, ServiceStatus>>>, sites: Record<string, ServiceStatus>) => {
+    const unused = Object.fromEntries(SERVICE_KEYS.map((k) => [k, { level: 'unused', detail: '' }]));
+    return {
+      generatedAt: '',
+      games: Object.fromEntries(Object.entries(games).map(([id, g]) => [id, { ...unused, ...g }])),
+      sites,
+    } as StatusReport;
+  };
+
+  it('green only when playable, db and render are all ok', () => {
+    expect(gameLevel(report({ g: { supabase: ok, render: ok } }, { g: ok }), 'g')).toBe('ok');
+    expect(gameLevel(report({ g: { supabase: ok, render: { level: 'unknown', detail: '' } } }, { g: ok }), 'g')).toBe('unknown');
+    expect(gameLevel(report({ g: { supabase: { level: 'down', detail: '' }, render: ok } }, { g: ok }), 'g')).toBe('down');
+    expect(gameLevel(report({ g: { supabase: ok, render: ok } }, { g: { level: 'down', detail: '' } }), 'g')).toBe('down');
+  });
+
+  it('other services do not change the light; unused core checks are skipped', () => {
+    const r = report({ g: { githubActions: { level: 'down', detail: '' }, vercel: { level: 'warn', detail: '' } } }, { g: ok });
+    expect(gameLevel(r, 'g')).toBe('ok');
+  });
+
   it('checkAll: report includes sites and platforms', async () => {
-    const r = await checkAll([{ ...base, playUrl: 'https://g.example/' }], {}, fakeFetch({ 'https://g.example/': [200, 'ok'] }));
+    const r = await checkAll([{ ...base, playUrl: 'https://g.example/' }], {}, fakeFetch({ 'https://g.example/': [200, '<html>'] }));
     expect(r.sites?.g.level).toBe('ok');
     expect(Object.keys(r.platforms ?? {})).toHaveLength(6);
   });

@@ -29,12 +29,17 @@ export const SERVICE_LABELS: Record<ServiceKey, string> = {
 export interface GameServices {
   /**
    * Supabase project ref, e.g. "dnnlmunlmmhiqpgkjbvr" (from the project URL).
+   * `publishableKey` is the project's public key ("sb_publishable_..." or the legacy anon key). It is
+   * already public in the game's own web page, and lets the database check run without any secret.
    * `tokenEnv` names the env var holding the access token, for projects in another Supabase account.
    */
-  supabase?: { projectRef?: string; name?: string; tokenEnv?: string };
+  supabase?: { projectRef?: string; name?: string; publishableKey?: string; tokenEnv?: string };
   /** Resend sending domain, e.g. "mail.example.com". Omit domain to only check that the key works. */
   resend?: { domain?: string };
-  /** Render service id ("srv-...") and optional public URL for a ping fallback. */
+  /**
+   * Render service. `url` is its public address (e.g. "https://my-api.onrender.com/healthz"), pinged
+   * without a key. `serviceId` ("srv-...") plus RENDER_API_KEY adds suspended / deploy state.
+   */
   render?: { serviceId?: string; url?: string; tokenEnv?: string };
   /** Vercel project name or id, and optional production URL for a ping fallback. */
   vercel?: { project: string; url?: string; tokenEnv?: string };
@@ -78,10 +83,19 @@ export interface ServiceStatus {
   link?: string;
 }
 
+/** The three checks that decide a game's light. */
+export type CoreCheck = 'playable' | 'db' | 'render';
+export const CORE_CHECKS: CoreCheck[] = ['playable', 'db', 'render'];
+export const CORE_LABELS: Record<CoreCheck, string> = {
+  playable: '遊戲可玩',
+  db: '資料庫連線',
+  render: 'Render 服務',
+};
+
 export interface StatusReport {
   generatedAt: string;
   games: Record<string, Record<ServiceKey, ServiceStatus>>;
-  /** Result of opening each game's playUrl (no key needed). */
+  /** Is the game playable: its playUrl must answer HTTP 200 with a page (no key needed). */
   sites?: Record<string, ServiceStatus>;
   /** Each provider's public status page: is the platform itself having an outage? */
   platforms?: Record<ServiceKey, ServiceStatus>;
