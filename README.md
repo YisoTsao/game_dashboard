@@ -36,7 +36,7 @@ A game's light is green only when all three of these pass. Other services (Resen
 | Check | How it is measured | Key needed |
 |---|---|---|
 | 遊戲可玩 playable | Opens `playUrl`. Must return **HTTP 200** with an HTML page. A 404, a login wall, or a host's "paused" page is 異常 | None |
-| 資料庫連線 database | With `SUPABASE_ACCESS_TOKEN`: management API `/v1/projects/<ref>/health?services=db`. Without it: calls `https://<ref>.supabase.co/rest/v1/` with the project's public `publishableKey` (set in games.ts). PostgREST answers by querying Postgres, so 200 means the DB connection works and 503 / `PGRST000-003` means it does not | None (uses the public key) |
+| 資料庫連線 database | If the game sets `supabase.healthUrl`: calls the game's own `/health`, which must run a real query and answer `200 {"ok":true,"db":"ok"}` (503 = down). While that route doesn't exist yet (404), falls back to: with `SUPABASE_ACCESS_TOKEN`: management API `/v1/projects/<ref>/health?services=db`. Without it: calls `https://<ref>.supabase.co/rest/v1/` with the project's public `publishableKey` (set in games.ts). PostgREST answers by querying Postgres, so 200 means the DB connection works and 503 / `PGRST000-003` means it does not | None (uses the public key) |
 | Render 服務 | Pings `render.url` (waits up to 70 s, since free instances sleep). Under 500 and not a "suspended" page is ok. With `RENDER_API_KEY` + `serviceId`: suspended flag and latest deploy | None, but `render.url` must be set |
 
 A game that does not use Supabase or Render is judged on the checks it has. A check with nothing to test with is 未知 (grey), so the light cannot turn green on a guess.

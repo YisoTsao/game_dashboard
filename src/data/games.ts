@@ -29,6 +29,7 @@ export const GAMES: Game[] = [
       supabase: {
         projectRef: 'dnnlmunlmmhiqpgkjbvr',
         name: 'mistwood',
+        healthUrl: 'https://mistwood-server.yisoapp.com/health',
         publishableKey: 'sb_publishable_iDyxbRYaPdxnLe5dnqwGaw_fVzcFLlk',
       },
       resend: {}, // TODO: set `domain` to the sending domain to check its verification
@@ -66,6 +67,7 @@ export const GAMES: Game[] = [
       supabase: {
         projectRef: 'arjvdmkxnoxebqclsxpw',
         name: 'Calo circle',
+        healthUrl: 'https://calo-circle.yisoapp.com/api/health',
         publishableKey: 'sb_publishable_PVglhlHAKN2iHHYAq8PtaA_l2BAwynf',
         tokenEnv: 'SUPABASE_ACCESS_TOKEN_CALO',
       },
@@ -118,6 +120,7 @@ export const GAMES: Game[] = [
       supabase: {
         projectRef: 'njbbyyuzqzzllvronqgn',
         name: 'xiangqi-arena',
+        healthUrl: 'https://xiangqi-arena-game-server.onrender.com/health',
         publishableKey: 'sb_publishable__d16FrMDRlU8wIbI1IB77w_LZYvT_b2',
       },
       // Render service "xiangqi-arena-game-server", at Render's default address.

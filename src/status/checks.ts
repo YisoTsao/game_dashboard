@@ -87,6 +87,9 @@ const PG_SQLSTATE = /"code"\s*:\s*"[0-9A-Z]{5}"/;
 /**
  * Is the game's database reachable?
  *
+ * - With `healthUrl`: the game's own /health route, which runs a real query. Preferred, because the
+ *   query goes through the game's own connection. Falls back to the checks below while the route
+ *   does not exist yet.
  * - With an access token: Supabase management API service health for "db".
  * - Without one: calls the project's REST API (PostgREST) with the public publishable key.
  *   PostgREST answers that request by querying Postgres, so a 200 means the database
@@ -101,6 +104,11 @@ async function checkSupabase(ctx: Ctx, cfg: NonNullable<Game['services']['supaba
     );
   }
   const link = `https://supabase.com/dashboard/project/${cfg.projectRef}`;
+  if (cfg.healthUrl) {
+    const h = await gameHealth(ctx, cfg.healthUrl);
+    if (h) return h;
+    // The game has no /health yet: fall through to the Supabase checks below.
+  }
   const token = ctx.env[tokenEnv];
   if (token) return { ...(await supabaseHealthApi(ctx, cfg.projectRef, token, tokenEnv)), link };
   if (cfg.publishableKey) return { ...(await supabaseRestProbe(ctx, cfg.projectRef, cfg.publishableKey, tokenEnv)), link };
@@ -108,6 +116,28 @@ async function checkSupabase(ctx: Ctx, cfg: NonNullable<Game['services']['supaba
     ...unknown(['supabase.publishableKey in games.ts', tokenEnv], 'No key to test the database connection.'),
     link,
   };
+}
+
+/**
+ * Calls the game's own health route, which runs a real query on its database.
+ * Expected answer: 200 {"ok":true,"db":"ok"}, or 503 {"ok":false,"db":"error", ...}.
+ * Returns undefined when the route does not exist yet (404, or a 200 that is not JSON, e.g. an SPA
+ * fallback page), so the caller can use the older checks.
+ */
+async function gameHealth(ctx: Ctx, url: string): Promise<ServiceStatus | undefined> {
+  try {
+    const res = await request(ctx, url, { accept: 'application/json' }, RENDER_WAKE_MS);
+    const body = typeof res.body === 'object' && res.body ? (res.body as { ok?: boolean; db?: string; error?: string }) : undefined;
+    if (res.status === 404 || res.status === 405 || (res.status === 200 && !body)) return undefined;
+    const paused = detectPausedPage(res);
+    if (paused) return { level: 'down', detail: paused, paused: true, source: 'api', link: url };
+    const dbOk = body?.db === 'ok' || (body?.db === undefined && body?.ok === true);
+    if (res.status === 200 && dbOk) return { level: 'ok', detail: 'Game server ran a database query (/health).', source: 'api', link: url };
+    const why = body?.error ?? body?.db ?? `HTTP ${res.status}`;
+    return { level: 'down', detail: `Game server /health says the database is not OK (${why}).`, source: 'api', link: url };
+  } catch (err) {
+    return { ...errorStatus(err), detail: `Game server /health did not answer: ${errorStatus(err).detail.replace(/^Request failed: /, '')}.`, link: url };
+  }
 }
 
 async function supabaseHealthApi(ctx: Ctx, ref: string, token: string, tokenEnv: string): Promise<ServiceStatus> {
