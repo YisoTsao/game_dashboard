@@ -62,8 +62,8 @@ export const GAMES: Game[] = [
     repo: 'YisoTsao/calorie-count',
     services: {
       // "Calo circle" is in a different Supabase account from the other two projects.
-      // TODO: set projectRef, and put that account's token in SUPABASE_ACCESS_TOKEN_CALO.
-      supabase: { name: 'Calo circle', tokenEnv: 'SUPABASE_ACCESS_TOKEN_CALO' },
+      // Its token is the SUPABASE_ACCESS_TOKEN_CALO secret.
+      supabase: { projectRef: 'arjvdmkxnoxebqclsxpw', name: 'Calo circle', tokenEnv: 'SUPABASE_ACCESS_TOKEN_CALO' },
       vercel: { project: 'calorie-count', url: 'http://calo-circle.yisoapp.com/' },
       githubActions: { repo: 'YisoTsao/calorie-count' },
     },
