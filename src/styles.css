@@ -186,3 +186,9 @@ code { font-family: ui-monospace, monospace; font-size: 0.85em; background: var(
 .site-row strong { font: 700 1.1rem var(--font-hand); }
 .platform-note { margin-top: 3px; padding: 2px 6px; background: #fff3c4; border-radius: 6px; font-size: 0.8rem; }
 @media (max-width: 640px) { .platforms { justify-content: flex-start; margin-left: 0; } }
+
+/* The light's three checks */
+.core { margin: 10px 0 6px; padding: 8px 10px; border: 2px solid var(--ink, #2B2118); border-radius: 10px; background: rgba(255, 255, 255, 0.45); }
+.core h3 { display: flex; align-items: center; gap: 8px; margin: 0; font: 700 1.25rem var(--font-hand); }
+.core-rule { margin: 4px 0 0; font-size: 0.82rem; opacity: 0.75; }
+.others-title { margin: 14px 0 0; font: 700 1.05rem var(--font-hand); opacity: 0.7; }

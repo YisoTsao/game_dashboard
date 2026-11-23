@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { GAMES } from '../src/data/games.ts';
 import { checkAll } from '../src/status/checks.ts';
+import { coreChecks, gameLevel } from '../src/theme.ts';
 
 // Minimal .env loader so `npm run status` works locally without extra deps.
 const envFile = resolve('.env');
@@ -22,9 +23,9 @@ mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
 
 for (const g of GAMES) {
-  const row = Object.entries(report.games[g.id])
-    .map(([k, s]) => `${k}:${s.level}`)
+  const core = Object.entries(coreChecks(report, g.id))
+    .map(([k, s]) => `${k}:${s?.level ?? 'n/a'}`)
     .join('  ');
-  console.log(`${g.id.padEnd(16)} ${row}`);
+  console.log(`${g.id.padEnd(16)} light:${gameLevel(report, g.id).padEnd(8)} ${core}`);
 }
 console.log(`\nWrote ${out}`);
