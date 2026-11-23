@@ -32,8 +32,11 @@ export interface GameServices {
    * `publishableKey` is the project's public key ("sb_publishable_..." or the legacy anon key). It is
    * already public in the game's own web page, and lets the database check run without any secret.
    * `tokenEnv` names the env var holding the access token, for projects in another Supabase account.
+   * `healthUrl` is the game's own health route (e.g. "https://api.example.com/health"). It must run a
+   * real database query and answer 200 {"ok":true,"db":"ok"} or 503. Until it exists (404), the
+   * checks above are used.
    */
-  supabase?: { projectRef?: string; name?: string; publishableKey?: string; tokenEnv?: string };
+  supabase?: { projectRef?: string; name?: string; publishableKey?: string; tokenEnv?: string; healthUrl?: string };
   /** Resend sending domain, e.g. "mail.example.com". Omit domain to only check that the key works. */
   resend?: { domain?: string };
   /**

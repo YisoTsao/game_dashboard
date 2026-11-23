@@ -66,6 +66,30 @@ describe('checkGame', () => {
     expect(gatewayOnly.supabase.level).toBe('unknown');
   });
 
+  it('DB: game /health route is used first, and falls back while it does not exist', async () => {
+    const game = {
+      ...base,
+      services: { supabase: { projectRef: 'abc', publishableKey: 'k', healthUrl: 'https://api.g/health' } },
+    };
+    const ok = await checkGame(game, { env: {}, fetch: fakeFetch({ 'https://api.g/health': [200, { ok: true, db: 'ok' }] }) });
+    expect(ok.supabase).toMatchObject({ level: 'ok', source: 'api' });
+    const bad = await checkGame(game, {
+      env: {},
+      fetch: fakeFetch({ 'https://api.g/health': [503, { ok: false, db: 'error', error: 'connection refused' }] }),
+    });
+    expect(bad.supabase).toMatchObject({ level: 'down', detail: expect.stringContaining('connection refused') });
+    // Not deployed yet: 404, or an SPA page with 200 -> use the REST probe instead.
+    for (const missing of [[404, 'Not Found'], [200, '<html>app</html>']] as [number, string][]) {
+      const r = await checkGame(game, {
+        env: {},
+        fetch: fakeFetch({ 'https://api.g/health': missing, 'https://abc.supabase.co/rest/v1/': [200, { swagger: '2.0' }] }),
+      });
+      expect(r.supabase).toMatchObject({ level: 'ok', source: 'ping' });
+    }
+    const unreachable = await checkGame(game, { env: {}, fetch: fakeFetch({}) });
+    expect(unreachable.supabase.level).toBe('down');
+  });
+
   it('DB: no token and no publishable key is unknown, not green', async () => {
     const game = { ...base, services: { supabase: { projectRef: 'abc' } } };
     const r = await checkGame(game, { env: {}, fetch: fakeFetch({}) });
