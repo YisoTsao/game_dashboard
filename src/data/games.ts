@@ -32,7 +32,7 @@ export const GAMES: Game[] = [
         publishableKey: 'sb_publishable_iDyxbRYaPdxnLe5dnqwGaw_fVzcFLlk',
       },
       resend: {}, // TODO: set `domain` to the sending domain to check its verification
-      render: {}, // TODO: set `url` to the Render address, e.g. 'https://xxx.onrender.com' (needed for a green light)
+      render: { url: 'https://mistwood-server.yisoapp.com/' },
       vercel: { project: 'mistwood', url: 'https://mistwood.yisoapp.com/' },
       githubActions: { repo: 'YisoTsao/misty-forest' },
     },
@@ -115,7 +115,8 @@ export const GAMES: Game[] = [
         name: 'xiangqi-arena',
         publishableKey: 'sb_publishable__d16FrMDRlU8wIbI1IB77w_LZYvT_b2',
       },
-      render: {}, // TODO: set `url` to the Render address, e.g. 'https://xxx.onrender.com' (needed for a green light)
+      // Render service "xiangqi-arena-game-server", at Render's default address.
+      render: { url: 'https://xiangqi-arena-game-server.onrender.com/' },
       vercel: { project: 'xiangqi-good', url: 'https://web-rose-sigma-54.vercel.app/' },
       githubActions: { repo: 'YisoTsao/xiangqi-arena' },
     },
