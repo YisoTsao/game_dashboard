@@ -206,6 +206,14 @@ async function checkRender(ctx: Ctx, cfg: NonNullable<Game['services']['render']
   try {
     const auth = { authorization: `Bearer ${key}`, accept: 'application/json' };
     const svc = await request(ctx, `https://api.render.com/v1/services/${cfg.serviceId}`, auth);
+    if (svc.status === 401 || svc.status === 403 || svc.status === 404)
+      return {
+        level: 'unknown',
+        detail: `Render API key cannot see this service (HTTP ${svc.status}). Check the key and serviceId.`,
+        source: 'api',
+        needs: [keyEnv],
+        link,
+      };
     if (!svc.ok) return { level: 'down', detail: `Render API returned HTTP ${svc.status}.`, source: 'api', link };
     if ((svc.body as { suspended?: string })?.suspended === 'suspended')
       return { level: 'down', detail: 'Service is suspended (paused). Resume it in the Render dashboard.', paused: true, source: 'api', link };
