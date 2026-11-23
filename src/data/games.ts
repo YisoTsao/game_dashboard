@@ -63,7 +63,12 @@ export const GAMES: Game[] = [
     services: {
       // "Calo circle" is in a different Supabase account from the other two projects.
       // Its token is the SUPABASE_ACCESS_TOKEN_CALO secret.
-      supabase: { projectRef: 'arjvdmkxnoxebqclsxpw', name: 'Calo circle', tokenEnv: 'SUPABASE_ACCESS_TOKEN_CALO' },
+      supabase: {
+        projectRef: 'arjvdmkxnoxebqclsxpw',
+        name: 'Calo circle',
+        publishableKey: 'sb_publishable_PVglhlHAKN2iHHYAq8PtaA_l2BAwynf',
+        tokenEnv: 'SUPABASE_ACCESS_TOKEN_CALO',
+      },
       vercel: { project: 'calorie-count', url: 'http://calo-circle.yisoapp.com/' },
       githubActions: { repo: 'YisoTsao/calorie-count' },
     },
