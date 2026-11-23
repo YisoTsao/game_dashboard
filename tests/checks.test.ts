@@ -105,7 +105,11 @@ describe('checkGame', () => {
         'https://api.render.com/v1/services/srv-1': [200, { suspended: 'not_suspended' }],
       }),
     });
-    expect(ok.render.level).toBe('ok');
+    expect(ok.render.level).toBe('ok');    const badKey = await checkGame(game, {
+      env,
+      fetch: fakeFetch({ 'https://api.render.com/v1/services/srv-1': [401, { message: 'unauthorized' }] }),
+    });
+    expect(badKey.render).toMatchObject({ level: 'unknown', needs: ['RENDER_API_KEY'] });
   });
 
   it('Render (no key): pings the service URL; missing URL is unknown', async () => {
